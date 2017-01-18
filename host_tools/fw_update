@@ -1,0 +1,145 @@
+#!/usr/bin/env python
+"""
+Firmware Updater Tool
+
+A frame consists of two sections:
+1. Two bytes for the length of the data section
+2. A data section of length defined in the length section
+
+[ 0x02 ]  [ variable ]
+--------------------
+| Length | Data... |
+--------------------
+
+In our case, the data is from one line of the Intel Hex formated .hex file
+
+We write a frame to the bootloader, then wait for it to respond with an
+OK message so we can write the next frame. The OK message in this case is
+just a zero
+"""
+
+import argparse
+import json
+import serial
+import struct
+import sys
+import zlib
+import time
+
+from cStringIO import StringIO
+from intelhex import IntelHex
+
+RESP_OK = b'\x00'
+
+
+class Firmware(object):
+    """
+    Helper for making frames.
+    """
+
+    BLOCK_SIZE = 16
+
+    def __init__(self, fw_filename):
+        with open(fw_filename, 'rb') as fw_file:
+            data = fw_file.read()
+            data = zlib.decompress(data)
+            data = json.loads(data)
+            self.version = data['version']
+            self.size = data['firmware_size']
+            self.hex_data = StringIO(data['hex_data'])
+
+        self.reader = IntelHex(self.hex_data)
+
+    def frames(self):
+        # The address is not sent, so we currently only support a single segment
+        # starting at address 0.
+        if len(self.reader.segments()) > 1:
+            raise RuntimeError("ERROR: Hex file contains multiple segments.")
+
+        for segment_start, segment_end in self.reader.segments():
+
+            if segment_start != 0:
+                raise RuntimeError("ERROR: Segment in Hex file does not start at address 0.")
+
+            # Construct frame from data and length.
+            for address in range(segment_start, segment_end, self.BLOCK_SIZE):
+
+                # Frame should be BLOCK_SIZE unless it is the last frame.
+                if address + self.BLOCK_SIZE <= segment_end:
+                    data = self.reader.tobinstr(start=address,
+                                                size=self.BLOCK_SIZE)
+                else:
+                    data = self.reader.tobinstr(start=address,
+                                                size=segment_end - address)
+                # Get length of frame.
+                length = len(data)
+                frame_fmt = '>H{}s'.format(length)
+
+                # Construct frame.
+                yield struct.pack(frame_fmt, length, data)
+
+    def close(self):
+        self.reader.close()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Firmware Update Tool')
+
+    parser.add_argument("--port", help="Serial port to send update over.",
+                        required=True)
+    parser.add_argument("--firmware", help="Path to firmware image to load.",
+                        required=True)
+    parser.add_argument("--debug", help="Enable debugging messages.",
+                        action='store_true')
+    args = parser.parse_args()
+
+    # Open serial port. Set baudrate to 115200. Set timeout to 2 seconds.
+    print('Opening serial port...')
+    ser = serial.Serial(args.port, baudrate=115200, timeout=2)
+
+    # Open our firmware file.
+    print('Opening firmware file...')
+    firmware = Firmware(args.firmware)
+    print('Version: {}'.format(firmware.version))
+    print('Size: {} bytes (not including release message)'.format(firmware.size))
+
+    print('Waiting for bootloader to enter update mode...')
+    while ser.read(1) != 'U':
+        pass
+
+    # Send size and version to bootloader.
+    metadata = struct.pack('>HH', firmware.version, firmware.size)
+    if args.debug:
+        print(metadata.encode('hex'))
+    ser.write(metadata)
+
+    # Wait for an OK from the bootloader.
+    resp = ser.read()
+    if resp != RESP_OK:
+        raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
+
+    for idx, frame in enumerate(firmware.frames()):
+        if args.debug:
+            print("Writing frame {} ({} bytes)...".format(idx, len(frame)))
+
+        ser.write(frame)  # Write the frame...
+
+        if args.debug:
+            print(frame.encode('hex'))
+
+        resp = ser.read()  # Wait for an OK from the bootloader
+
+        time.sleep(0.1)
+
+        if resp != RESP_OK:
+            raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
+
+        if args.debug:
+            print("Resp: {}".format(ord(resp)))
+
+    print("Done writing firmware.")
+
+    # Send a zero length payload to tell the bootlader to finish writing
+    # it's page.
+    ser.write(struct.pack('>H', 0x0000))
+
