@@ -22,6 +22,11 @@ need to install it again.
 
 1. Download and install VirtualBox here:
    [https://www.virtualbox.org/wiki/Downloads] using the provided instructions.
+   a. Prior to installation:
+      i.  Ensure that Virtualization extensions (VT-x, or AMD-V) are 
+          enabled in your system BIOS prior to installation.
+      ii. For systems with UEFI secure boot enabled, see the 
+          'Installation notes' at the end of this document.
 2. Download and install VirtualBox Extensions (for USB support) from the same
    link: [https://www.virtualbox.org/wiki/Downloads] using the provided
    instructions.
@@ -140,3 +145,28 @@ additional required arguments or other user inputs. This allows us to write
 automated tests to check if your submission is complete. If you have questions
 about the specifications please contact the organizers in Slack or by email:
 ectf@mitre.org.
+
+# Installation Notes 
+Some additional notes in case you have problems...
+
+## UEFI Secure Boot 
+If your host system boots with UEFI BIOS firmware with secure boot enabled,
+the VirtualBox kernel driver, "vboxdrv", will not be permitted to load 
+if it is unsigned. 
+
+This may affect all platforms with UEFI secure boot enabled, but we noticed
+it with Ubuntu 16.04 LTS. This holds true for the Virtualbox installation 
+package from both the Ubuntu apt-get repositories as well as the .deb package
+downloaded directly from Oracle. In the former case, the Virtualbox 
+installation process provides the option to disable UEFI secure boot to permit
+the unsigned driver to load. Doing so is at your own risk, as disabling secure
+boot makes your system more vulnerable to malicious kernel drivers and 
+'bootkits'. 
+
+## Ubuntu 14.04
+A few tips based on our experience testing on Ubuntu 14.04 LTS:
+* Generate an SSH key beforehand if you have an empty id_rsa.pub
+* Enable Virtualization extensions (VT-x) in the system BIOS
+* Once ssh'd into the vagrant VM, you may need to install the 'intelhex'
+package before building (via pip)
+
