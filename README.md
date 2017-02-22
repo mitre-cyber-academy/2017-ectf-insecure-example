@@ -22,11 +22,6 @@ need to install it again.
 
 1. Download and install VirtualBox here:
    [https://www.virtualbox.org/wiki/Downloads] using the provided instructions.
-   a. Prior to installation:
-      i.  Ensure that Virtualization extensions (VT-x, or AMD-V) are 
-          enabled in your system BIOS prior to installation.
-      ii. For systems with UEFI secure boot enabled, see the 
-          'Installation notes' at the end of this document.
 2. Download and install VirtualBox Extensions (for USB support) from the same
    link: [https://www.virtualbox.org/wiki/Downloads] using the provided
    instructions.
@@ -114,6 +109,12 @@ need to run them an argument to the python interpreter (i.e.,
 All tools that take arguments should have a help flag (`-h`) that will provide
 descriptions.
 
+## Checking Code Size 
+To check the size of your bootloader code you can run:
+`avr-size flash.hex`
+
+Also, the file `bootloader.map` is now created when the firmware is created. It provides a description on where functions are located in program memory. 
+
 ## Programming the Board
 The following command should program your board with the output from your
 `bl_build` tool:
@@ -134,6 +135,80 @@ The AVR dragon may occasionally end up in a state where it no longer responds to
 avrdude. If this happens, the problem can be resolved by disconnecting and
 reconnecting the dragon's USB cable.
 
+## Makefile, Flashing and Debugging
+
+The Makefile contains targets for both flashing and debugging the AVR as well as using the JTAG 
+functionality of the Dragon. There is a number of caveats to getting this to
+work. The first is that JTAG must be connected by jumpers since neither the 10-pin or 6-pin
+ISP connectors on the protostack board.
+
+Refer to the JTAG connector pinout on the Dragon Board 
+[here](http://www.atmel.com/webdoc/avrdragon/avrdragon.using_ocd_physical_jtag.html) in Figure 27.
+
+The JTAG pins connect to the AVR as follows:
+
+| JTAG PIN  | AVR PIN  |
+|:--------- |:-------- |
+| TDI       | PC5      | 
+| TDO       | PC4      |
+| TMS       | PC3      |
+| TCK       | PC2      |
+
+NOTE: The VCC, Reset and Ground lines from the dragon must also be connected. If the 6-pin header of your 
+protostack board is unpopulated, these pins are exposed on the 10-pin ISP connector. The pinout for the
+10-pin ISP connector can be found [here](http://www.sunrom.com/learn/avr-isp-10-pin-for-programming)
+
+In order to start a debug session, simply have the dragon propely connected over JTAG, then flash your 
+bootloader image calling avrdude from the command line or using `make flash`. Once the bootloader has been
+successfully loaded you can either run `make debug` which should open an instance of avarice by calling
+`avarice -R -g :4242`  which connects  to the microcontroller, then starts/configures an instance of 
+avr-gdb with the elf file full of debug symbols. 
+
+The `avarice` and `avr-gdb` tools are now included in the `Vagrant.team` files. If you setup your VM previously,
+you can run `sudo apt-get install avarice` and `sudo apt-get install gdb-avr`. Alternatively, you can run 
+`vagrant up --provision	` to re-provision the VM with the new configuration.
+
+NOTE: The specific configuration of avr-gdb is handled behind the scenes in the `.gdbinit` file.  
+
+IMPORTANT NOTE: Debugging will ONLY work if your dragon has the latest firmware version (reported by avrdude to be 7.39) You can run `avrdude -P usb -p m1284p -c dragon_jtag -vv` to get something that looks similar to 
+the following report. YOU want the `firmware_version` for the `M_MCU` and `S_MCU` to both be 7.39 as shown 
+bellow. IF your dragon does not have the latest FW version you must install ATMEL Studio, connect your dragon
+and protostack using the programming tools menu. From there once you read from the AVR the first time ATMEL 
+studio will prompt you to update your dragon to firmware 7.xx. Update then run avrdude again to make sure
+you have the proper firmware version.
+
+```
+avrdude: Version 6.0.1, compiled on Dec 16 2013 at 17:26:24
+   Copyright (c) 2000-2005 Brian Dean, http://www.bdmicro.com/
+   Copyright (c) 2007-2009 Joerg Wunsch
+
+   System wide configuration file is "/usr/local/CrossPack-AVR-20131216/etc/avrdude.conf"
+   User configuration file is "/Users/hgiannopoulos/.avrduderc"
+   User configuration file does not exist or is not a regular file, skipping
+
+   Using Port                    : usb
+   Using Programmer              : dragon_jtag
+   avrdude: jtagmkII_dragon_open()
+   avrdude: usbdev_open(): Found AVRDRAGON, serno: 00A20006485C
+   avrdude: jtagmkII_getsync(): Sending sign-on command: 0x86 (26 bytes msg)
+   JTAG ICE mkII sign-on message:
+   Communications protocol version: 1
+   M_MCU:
+      boot-loader FW version:        255
+      firmware version:              7.39
+      hardware version:              1
+   S_MCU:
+      boot-loader FW version:        255
+      firmware version:              7.39
+      hardware version:              7
+   Serial number:                   00:a2:00:06:48:5c
+   Device ID:                       AVRDRAGON
+```
+
+Once you run `make debug` you should get a window that looks like this:
+![alt text](gdb_example.png)
+
+
 ## Tool Specifications
 Detailed tool specifications should be found in the challenge rules document.
 
@@ -145,28 +220,3 @@ additional required arguments or other user inputs. This allows us to write
 automated tests to check if your submission is complete. If you have questions
 about the specifications please contact the organizers in Slack or by email:
 ectf@mitre.org.
-
-# Installation Notes 
-Some additional notes in case you have problems...
-
-## UEFI Secure Boot 
-If your host system boots with UEFI BIOS firmware with secure boot enabled,
-the VirtualBox kernel driver, "vboxdrv", will not be permitted to load 
-if it is unsigned. 
-
-This may affect all platforms with UEFI secure boot enabled, but we noticed
-it with Ubuntu 16.04 LTS. This holds true for the Virtualbox installation 
-package from both the Ubuntu apt-get repositories as well as the .deb package
-downloaded directly from Oracle. In the former case, the Virtualbox 
-installation process provides the option to disable UEFI secure boot to permit
-the unsigned driver to load. Doing so is at your own risk, as disabling secure
-boot makes your system more vulnerable to malicious kernel drivers and 
-'bootkits'. 
-
-## Ubuntu 14.04
-A few tips based on our experience testing on Ubuntu 14.04 LTS:
-* Generate an SSH key beforehand if you have an empty id_rsa.pub
-* Enable Virtualization extensions (VT-x) in the system BIOS
-* Once ssh'd into the vagrant VM, you may need to install the 'intelhex'
-package before building (via pip)
-
