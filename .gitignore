@@ -1,6 +1,9 @@
 # Vagrant metadata/machines should not be commited to git.
 .vagrant
 
+# Ignore other build files
+*/*.map
+
 # Local settings should not be committed to git.
 Vagrantfile.local
 
