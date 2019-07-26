@@ -1,0 +1,55 @@
+# Secret password default value.
+PASSWORD ?= password
+
+# Tool aliases.
+CC = gcc
+STRIP  = strip
+OBJCOPY = objcopy
+
+# Compiler configurations.
+# Description of CDEFS options
+# -g3 -- turns on  the highest level of debug symbols.
+# -ggdb3 -- turns on the highest level of debug symbols for the gdb debugger.
+CDEFS = -g3 -ggdb3 -DPC -DRB_PASSWORD=\"${PASSWORD}\"
+
+CWARN =  -Wall
+COPT = -std=gnu99 -Os
+
+CFLAGS  = $(CDEFS) $(CWARN) $(COPT)
+
+# Include file paths.
+INCLUDES = -I./include -I./e_avr
+
+SOURCES = $(wildcard e_avr/*.c)
+OBJECTS = $(patsubst %.c, %.o, $(SOURCES))
+
+
+# Run clean even when all files have been removed.
+.PHONY: clean
+
+all:    strip
+	@echo  Simple bootloader has been compiled and packaged as intel hex.
+
+$(OBJECTS): e_avr/%.o : e_avr/%.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+flash.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/flash.c
+
+pin.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/pin.c
+
+bootloader.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/bootloader.c
+
+bootloader_dbg.elf: bootloader.o pin.o flash.o $(OBJECTS)
+        # Create an .elf file for the bootloader with all debug symbols included.
+	$(CC) $(CFLAGS) $(INCLUDES) -o bootloader_dbg.elf bootloader.o pin.o flash.o $(OBJECTS)
+
+strip: bootloader_dbg.elf
+	# Create a version of the bootloder .elf file with all the debug symbols stripped.
+	$(STRIP) bootloader_dbg.elf -o bootloader.elf
+
+clean:
+	$(RM) -v *.hex *.o *.elf $(MAIN) e_avr/*.o
+

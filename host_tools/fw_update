@@ -20,6 +20,7 @@ just a zero
 
 import argparse
 import json
+import os
 import serial
 import struct
 import sys
@@ -82,6 +83,19 @@ class Firmware(object):
         self.reader.close()
 
 
+class NMConn:
+    def __init__(self):
+        self.rx = os.open('/tmp/uart1_tx', os.O_RDONLY)
+        time.sleep(1)
+        self.tx = os.open('/tmp/uart1_rx', os.O_WRONLY, timeout=1)
+
+    def read(self, n=1):
+        return os.read(self.rx, n)
+
+    def write(self, msg):
+        os.write(self.tx, msg)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Firmware Update Tool')
 
@@ -91,11 +105,19 @@ if __name__ == '__main__':
                         required=True)
     parser.add_argument("--debug", help="Enable debugging messages.",
                         action='store_true')
+    parser.add_argument("--test", help="Connec to named pipe for testing.",
+                        action='store_true')
     args = parser.parse_args()
 
     # Open serial port. Set baudrate to 115200. Set timeout to 2 seconds.
     print('Opening serial port...')
-    ser = serial.Serial(args.port, baudrate=115200, timeout=2)
+
+    if args.test:
+        ser = NMConn()
+
+    else:
+        ser = serial.Serial(args.port, baudrate=115200, timeout=2)
+
 
     # Open our firmware file.
     print('Opening firmware file...')

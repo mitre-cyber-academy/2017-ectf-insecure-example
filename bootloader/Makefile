@@ -42,6 +42,12 @@ INCLUDES = -I./include
 all:    flash.hex eeprom.hex
 	@echo  Simple bootloader has been compiled and packaged as intel hex.
 
+pin.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/pin.c
+
+flash.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/flash.c
+
 uart.o:
 	$(CC) $(CFLAGS) $(INCLUDES) -c src/uart.c
 
@@ -51,9 +57,9 @@ sys_startup.o:
 bootloader.o:
 	$(CC) $(CFLAGS) $(INCLUDES) -c src/bootloader.c
 
-bootloader_dbg.elf: uart.o sys_startup.o bootloader.o
+bootloader_dbg.elf: pin.o flash.o uart.o sys_startup.o bootloader.o
         # Create an .elf file for the bootloader with all debug symbols included.
-	$(CC) $(CFLAGS) $(INCLUDES) -o bootloader_dbg.elf uart.o sys_startup.o bootloader.o
+	$(CC) $(CFLAGS) $(INCLUDES) -o bootloader_dbg.elf pin.o flash.o uart.o sys_startup.o bootloader.o
 
 strip: bootloader_dbg.elf
 	# Create a version of the bootloder .elf file with all the debug symbols stripped.

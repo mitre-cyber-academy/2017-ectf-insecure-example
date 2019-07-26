@@ -28,20 +28,32 @@
  *
  */
 
+#ifdef PC
+#define EEMEM
+#include "e_eeprom.h"
+#include "e_io.h"
+#include "e_wdt.h"
+#include "e_pgmspace.h"
+#else
 #include <avr/io.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <util/delay.h>
-#include "uart.h"
 #include <avr/boot.h>
 #include <avr/wdt.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include <util/delay.h>
+#endif
+
+#include "pin.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+
+#include "uart.h"
+#include "flash.h"
 
 #define OK    ((unsigned char)0x00)
 #define ERROR ((unsigned char)0x01)
 
-void program_flash(uint32_t page_address, unsigned char *data);
 void load_firmware(void);
 void boot_firmware(void);
 void readback(void);
@@ -57,19 +69,15 @@ int main(void)
     UART0_init();
     wdt_reset();
 
-    // Configure Port B Pins 2 and 3 as inputs.
-    DDRB &= ~((1 << PB2) | (1 << PB3));
-
-    // Enable pullups - give port time to settle.
-    PORTB |= (1 << PB2) | (1 << PB3);
+    PIN_init();
 
     // If jumper is present on pin 2, load new firmware.
-    if(!(PINB & (1 << PB2)))
+    if(!PIN_update())
     {
         UART1_putchar('U');
         load_firmware();
     }
-    else if(!(PINB & (1 << PB3)))
+    else if(!PIN_readback())
     {
         UART1_putchar('R');
         readback();
@@ -261,31 +269,3 @@ void boot_firmware(void)
 }
 
 
-/*
- * To program flash, you need to access and program it in pages
- * On the atmega1284p, each page is 128 words, or 256 bytes
- *
- * Programing involves four things,
- * 1. Erasing the page
- * 2. Filling a page buffer
- * 3. Writing a page
- * 4. When you are done programming all of your pages, enable the flash
- *
- * You must fill the buffer one word at a time
- */
-void program_flash(uint32_t page_address, unsigned char *data)
-{
-    int i = 0;
-
-    boot_page_erase_safe(page_address);
-
-    for(i = 0; i < SPM_PAGESIZE; i += 2)
-    {
-        uint16_t w = data[i];    // Make a word out of two bytes
-        w += data[i+1] << 8;
-        boot_page_fill_safe(page_address+i, w);
-    }
-
-    boot_page_write_safe(page_address);
-    boot_rww_enable_safe(); // We can just enable it after every program too
-}
